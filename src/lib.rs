@@ -46,7 +46,7 @@ impl Client {
 	}
 
 	#[instrument(err, level = "debug", skip(self))]
-	async fn get(&self, t: &str, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Bytes, reqwest::Error> {
+	pub async fn get(&self, t: &str, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Bytes, reqwest::Error> {
 		let url = format!("{}?t={}&apikey={}&{}", self.base_url, &t, self.apikey, qparams.into_iter()
 			.map(|(k, v)| {
 				let mut s = String::from(urlencoding::encode(k));
@@ -56,11 +56,12 @@ impl Client {
 			})
 			.join("&")
 		);
+		println!("{}", url);
 		self.http.get(&url).send().await?.error_for_status()?.bytes().await
 	}
 
 	#[instrument(err, level = "debug", skip(self))]
-	async fn get_items(&self, t: &str, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Vec<Item>, Error> {
+	pub async fn get_items(&self, t: &str, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Vec<Item>, Error> {
 		let bytes = self.get(t, qparams).await?.reader();
 		let channel = Channel::read_from(bytes)?;
 		Ok(channel.into_items())
@@ -101,6 +102,16 @@ impl Client {
 			qparams.push(("imdbid", SmartCow::Owned(String::from(v.to_string()))))
 		}
 		let items = self.get_items("movies", qparams).await?;
+		Ok(items.into_iter().map(torrent::from_item).collect::<Vec<_>>())
+	}
+
+	#[instrument(err, level = "info", skip(self))]
+	pub async fn audiosearch(&self, q: Option<&str>) -> Result<Vec<Result<Torrent, Error>>, Error>{
+		let mut qparams = Vec::new();
+		if let Some(v) = q {
+			qparams.push(("q", SmartCow::Borrowed(v)));
+		}
+		let items = self.get_items("search", qparams).await?;
 		Ok(items.into_iter().map(torrent::from_item).collect::<Vec<_>>())
 	}
 }
