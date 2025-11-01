@@ -16,6 +16,7 @@ use tracing::instrument;
 mod error;
 pub use error::Error;
 mod torrent;
+mod torznab_cat;
 
 #[cfg(any(feature = "parse-names", feature = "require-parse-names"))]
 /// Re-exported from [`torrent-name-parser`](torrent_name_parser::Metadata)
@@ -23,6 +24,7 @@ pub use torrent_name_parser::Metadata;
 
 /// Re-exported from [`torrent-common`](torrent_common::Torrent)
 pub use torrent_common::Torrent;
+use crate::torznab_cat::TorznabCategory;
 
 #[derive(Clone)]
 pub struct Client {
@@ -46,8 +48,8 @@ impl Client {
 	}
 
 	#[instrument(err, level = "debug", skip(self))]
-	pub async fn get(&self, t: &str, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Bytes, reqwest::Error> {
-		let url = format!("{}?t={}&apikey={}&{}", self.base_url, &t, self.apikey, qparams.into_iter()
+	pub async fn get(&self, t: TorznabCategory, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Bytes, reqwest::Error> {
+		let url = format!("{}?category={}&apikey={}&{}", self.base_url, t.as_u32(), self.apikey, qparams.into_iter()
 			.map(|(k, v)| {
 				let mut s = String::from(urlencoding::encode(k));
 				s.push('=');
@@ -61,47 +63,29 @@ impl Client {
 	}
 
 	#[instrument(err, level = "debug", skip(self))]
-	pub async fn get_items(&self, t: &str, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Vec<Item>, Error> {
+	pub async fn get_items(&self, t: TorznabCategory, qparams: Vec<(&str, SmartCow<'_>)>) -> Result<Vec<Item>, Error> {
 		let bytes = self.get(t, qparams).await?.reader();
 		let channel = Channel::read_from(bytes)?;
 		Ok(channel.into_items())
 	}
-
+	//Sorry, but in new torznab there is no such parameters
 	#[instrument(err, level = "info", skip(self))]
-	pub async fn tvsearch(&self, q: Option<&str>, rid: Option<u32>, tvdbid: Option<u32>, tvmazeid: Option<u32>, season: Option<u16>, ep: Option<u16>) -> Result<Vec<Result<Torrent, Error>>, Error> {
+	pub async fn tvsearch(&self, q: Option<&str>) -> Result<Vec<Result<Torrent, Error>>, Error> {
 		let mut qparams = Vec::new();
 		if let Some(v) = q {
 			qparams.push(("q", SmartCow::Borrowed(v)));
 		}
-		if let Some(v) = rid {
-			qparams.push(("rid", SmartCow::Owned(String::from(v.to_string()))));
-		}
-		if let Some(v) = tvdbid {
-			qparams.push(("tvdbid", SmartCow::Owned(String::from(v.to_string()))))
-		}
-		if let Some(v) = tvmazeid {
-			qparams.push(("tvmazeid", SmartCow::Owned(String::from(v.to_string()))))
-		}
-		if let Some(v) = season {
-			qparams.push(("season", SmartCow::Owned(String::from(v.to_string()))))
-		}
-		if let Some(v) = ep {
-			qparams.push(("ep", SmartCow::Owned(String::from(v.to_string()))))
-		}
-		let items = self.get_items("tvsearch", qparams).await?;
+		let items = self.get_items(TorznabCategory::Tv5000, qparams).await?;
 		Ok(items.into_iter().map(torrent::from_item).collect::<Vec<_>>())
 	}
-
+	//Sorry, but in new torznab there is no such parameters
 	#[instrument(err, level = "info", skip(self))]
-	pub async fn moviesearch(&self, q: Option<&str>, imdbid: Option<u32>) -> Result<Vec<Result<Torrent, Error>>, Error> {
+	pub async fn moviesearch(&self, q: Option<&str>) -> Result<Vec<Result<Torrent, Error>>, Error> {
 		let mut qparams = Vec::new();
 		if let Some(v) = q {
 			qparams.push(("q", SmartCow::Borrowed(v)))
 		}
-		if let Some(v) = imdbid {
-			qparams.push(("imdbid", SmartCow::Owned(String::from(v.to_string()))))
-		}
-		let items = self.get_items("movies", qparams).await?;
+		let items = self.get_items(TorznabCategory::Movies2000, qparams).await?;
 		Ok(items.into_iter().map(torrent::from_item).collect::<Vec<_>>())
 	}
 
@@ -111,7 +95,7 @@ impl Client {
 		if let Some(v) = q {
 			qparams.push(("q", SmartCow::Borrowed(v)));
 		}
-		let items = self.get_items("search", qparams).await?;
+		let items = self.get_items(TorznabCategory::Audio3000, qparams).await?;
 		Ok(items.into_iter().map(torrent::from_item).collect::<Vec<_>>())
 	}
 }
